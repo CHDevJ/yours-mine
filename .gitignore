@@ -36,3 +36,6 @@ build/
 .junie/
 .env
 application-local.properties
+
+### 개인 학습 자료 (공개 저장소에 올리지 않음) ###
+private/
