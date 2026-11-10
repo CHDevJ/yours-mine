@@ -13,4 +13,5 @@ public class ChatRoomDTO {
     private String boardTitle;
     private String otherName; // 상대방 이름
     private boolean seller;   // 내가 판매자인지
+    private long unreadCount; // 내가 아직 안 읽은 메시지 개수
 }

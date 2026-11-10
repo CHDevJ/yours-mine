@@ -146,4 +146,67 @@ class ChatServiceTest {
         assertEquals(1, chatService.findMyRooms(seller.getUsername()).size());
         assertTrue(chatService.findMyRooms(stranger.getUsername()).isEmpty());
     }
+
+    // ---- 안 읽은 메시지 ----
+
+    private long unreadOf(User user, Long roomId) {
+        return chatService.findMyRooms(user.getUsername()).stream()
+                .filter(room -> room.getRoomId().equals(roomId))
+                .findFirst()
+                .orElseThrow()
+                .getUnreadCount();
+    }
+
+    @Test
+    void 안_읽은_메시지는_상대방이_보낸_것만_세고_읽으면_줄어든다() {
+        Long roomId = chatService.getOrCreateRoom(board.getId(), buyer.getUsername());
+        chatService.saveMessage(roomId, buyer.getUsername(), "하나");
+        ChatMessageDTO second = chatService.saveMessage(roomId, buyer.getUsername(), "둘");
+
+        assertEquals(2, unreadOf(seller, roomId));
+        assertEquals(0, unreadOf(buyer, roomId)); // 내가 보낸 메시지는 안 읽음에 포함되지 않는다
+
+        chatService.markRead(roomId, seller.getUsername(), second.getId());
+        assertEquals(0, unreadOf(seller, roomId));
+    }
+
+    @Test
+    void 읽은_번호는_뒤로_가지_않는다() {
+        Long roomId = chatService.getOrCreateRoom(board.getId(), buyer.getUsername());
+        ChatMessageDTO first = chatService.saveMessage(roomId, buyer.getUsername(), "하나");
+        chatService.saveMessage(roomId, buyer.getUsername(), "둘");
+        ChatMessageDTO third = chatService.saveMessage(roomId, buyer.getUsername(), "셋");
+
+        chatService.markRead(roomId, seller.getUsername(), third.getId());
+        assertEquals(0, unreadOf(seller, roomId));
+
+        // 오래된 번호로 다시 읽음 처리가 들어와도(순서가 뒤바뀐 요청) 이미 읽은 것이 '안 읽음'으로 되돌아가면 안 된다
+        chatService.markRead(roomId, seller.getUsername(), first.getId());
+        assertEquals(0, unreadOf(seller, roomId));
+
+        chatService.saveMessage(roomId, buyer.getUsername(), "넷");
+        assertEquals(1, unreadOf(seller, roomId));
+    }
+
+    @Test
+    void 구매자와_판매자의_읽음은_따로_기록된다() {
+        Long roomId = chatService.getOrCreateRoom(board.getId(), buyer.getUsername());
+        ChatMessageDTO fromBuyer = chatService.saveMessage(roomId, buyer.getUsername(), "구매자 메시지");
+        chatService.saveMessage(roomId, seller.getUsername(), "판매자 답장");
+
+        assertEquals(1, unreadOf(seller, roomId));
+        assertEquals(1, unreadOf(buyer, roomId));
+
+        chatService.markRead(roomId, seller.getUsername(), fromBuyer.getId());
+        assertEquals(0, unreadOf(seller, roomId));
+        assertEquals(1, unreadOf(buyer, roomId)); // 판매자가 읽어도 구매자의 안 읽음은 그대로
+    }
+
+    @Test
+    void 참여자가_아니면_읽음_처리도_거부한다() {
+        Long roomId = chatService.getOrCreateRoom(board.getId(), buyer.getUsername());
+        ChatMessageDTO message = chatService.saveMessage(roomId, buyer.getUsername(), "안녕");
+        assertThrows(AccessDeniedException.class,
+                () -> chatService.markRead(roomId, stranger.getUsername(), message.getId()));
+    }
 }

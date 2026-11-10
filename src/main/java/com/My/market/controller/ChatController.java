@@ -1,5 +1,6 @@
 package com.My.market.controller;
 
+import com.My.market.DTO.ChatMessageDTO;
 import com.My.market.service.ChatService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -12,6 +13,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.server.ResponseStatusException;
+
+import java.util.List;
 
 @Controller
 @RequiredArgsConstructor
@@ -43,8 +46,14 @@ public class ChatController {
     public String room(@PathVariable Long roomId, Model model, Authentication authentication) {
         String username = authentication.getName();
         model.addAttribute("room", chatService.getRoom(roomId, username));
-        model.addAttribute("history", chatService.getHistory(roomId, username));
+        List<ChatMessageDTO> history = chatService.getHistory(roomId, username);
+        model.addAttribute("history", history);
         model.addAttribute("me", username);
+
+        // 방금 화면에 보여준 마지막 메시지까지 읽은 것으로 기록한다
+        if (!history.isEmpty()) {
+            chatService.markRead(roomId, username, history.get(history.size() - 1).getId());
+        }
         return "chat/chatRoom";
     }
 }

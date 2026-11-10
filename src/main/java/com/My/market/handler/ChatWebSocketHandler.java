@@ -17,6 +17,7 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.io.IOException;
 import java.security.Principal;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -108,6 +109,31 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             return;
         }
         broadcast(joinedRoomId, saved);
+        markReadForViewers(joinedRoomId, username, saved.getId());
+    }
+
+    // 지금 이 방을 보고 있는 상대는 방금 메시지를 화면으로 본 것이므로 읽음 처리한다.
+    // (안 하면 방을 보고 있었는데도 목록에 '안 읽음'으로 남는다)
+    private void markReadForViewers(Long roomId, String senderName, Long messageId) {
+        Set<String> ids = roomSessions.get(roomId);
+        if (ids == null) {
+            return;
+        }
+        Set<String> viewers = new HashSet<>();
+        for (String id : ids) {
+            WebSocketSession viewer = sessions.get(id);
+            if (viewer != null && viewer.isOpen() && viewer.getPrincipal() != null) {
+                viewers.add(viewer.getPrincipal().getName());
+            }
+        }
+        viewers.remove(senderName); // 보낸 사람의 안 읽은 개수에는 원래 자기 메시지가 들어가지 않는다
+        for (String viewerName : viewers) {
+            try {
+                chatService.markRead(roomId, viewerName, messageId);
+            } catch (Exception e) {
+                log.warn("읽음 처리 실패. roomId={}, user={}", roomId, viewerName, e);
+            }
+        }
     }
 
     private void quit(WebSocketSession session, String username) {
@@ -142,7 +168,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     }
 
     private ChatMessageDTO notice(MessageType type, Long roomId, String text) {
-        return new ChatMessageDTO(type, roomId, null, text, null);
+        return new ChatMessageDTO(null, type, roomId, null, text, null);
     }
 
     // 한 명의 전송 실패가 다른 사람에게 영향을 주지 않도록 각각 try/catch 한다

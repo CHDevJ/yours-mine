@@ -34,6 +34,10 @@ public class ChatRoom {
 
     private LocalDateTime createdAt;
 
+    // 각자 마지막으로 읽은 메시지 번호. 이보다 큰 번호의 상대방 메시지가 '안 읽은 메시지'다. (null = 아직 아무것도 안 읽음)
+    private Long buyerLastReadId;
+    private Long sellerLastReadId;
+
     // 상품이 삭제되면 방과 대화도 함께 삭제된다 (Board.chatRooms 의 cascade 로 이어짐)
     @OneToMany(mappedBy = "room", cascade = CascadeType.REMOVE, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<ChatMessage> messages = new ArrayList<>();

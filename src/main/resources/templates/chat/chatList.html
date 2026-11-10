@@ -21,8 +21,13 @@
                 th:href="@{/chat/room/{id}(id=${r.roomId})}">
                 <div class="d-flex justify-content-between">
                     <strong th:text="${r.boardTitle}">상품명</strong>
-                    <span class="badge" th:classappend="${r.seller} ? 'bg-primary' : 'bg-secondary'"
-                        th:text="${r.seller} ? '판매' : '구매'">구매</span>
+                    <span>
+                        <!-- 안 읽은 메시지가 있을 때만 빨간 배지 -->
+                        <span class="badge bg-danger" th:if="${r.unreadCount > 0}"
+                            th:text="${r.unreadCount > 99} ? '99+' : ${r.unreadCount}">3</span>
+                        <span class="badge" th:classappend="${r.seller} ? 'bg-primary' : 'bg-secondary'"
+                            th:text="${r.seller} ? '판매' : '구매'">구매</span>
+                    </span>
                 </div>
                 <small class="text-muted">상대방: <span th:text="${r.otherName}">상대</span></small>
             </a>

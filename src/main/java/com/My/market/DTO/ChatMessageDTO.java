@@ -20,6 +20,7 @@ public class ChatMessageDTO {
         ENTER, TALK, QUIT
     }
 
+    private Long id; // 저장된 메시지 번호 (입장/퇴장 알림에는 없음)
     private MessageType type;
     private Long roomId;
     private String sender;

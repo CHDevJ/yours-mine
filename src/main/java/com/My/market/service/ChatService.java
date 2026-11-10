@@ -18,7 +18,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -68,14 +70,35 @@ public class ChatService {
 
     @Transactional(readOnly = true)
     public ChatRoomDTO getRoom(Long roomId, String username) {
-        return toRoomDTO(findParticipantRoom(roomId, username), username);
+        return toRoomDTO(findParticipantRoom(roomId, username), username, 0L);
     }
 
     @Transactional(readOnly = true)
     public List<ChatRoomDTO> findMyRooms(String username) {
+        Map<Long, Long> unreadByRoom = new HashMap<>();
+        for (Object[] row : chatRoomRepository.countUnreadByRoom(username)) {
+            unreadByRoom.put((Long) row[0], (Long) row[1]);
+        }
         return chatRoomRepository.findMyRooms(username).stream()
-                .map(room -> toRoomDTO(room, username))
+                .map(room -> toRoomDTO(room, username, unreadByRoom.getOrDefault(room.getId(), 0L)))
                 .toList();
+    }
+
+    /**
+     * username 이 messageId 번 메시지까지 읽었다고 기록한다. 이미 더 뒤까지 읽었다면 아무 일도 하지 않는다.
+     * (번호가 앞으로만 가는 것은 UPDATE 문의 조건이 보장한다)
+     */
+    @Transactional
+    public void markRead(Long roomId, String username, Long messageId) {
+        if (messageId == null) {
+            return;
+        }
+        ChatRoom room = findParticipantRoom(roomId, username);
+        if (room.getBuyer().getUsername().equals(username)) {
+            chatRoomRepository.updateBuyerLastRead(roomId, messageId);
+        } else {
+            chatRoomRepository.updateSellerLastRead(roomId, messageId);
+        }
     }
 
     @Transactional(readOnly = true)
@@ -129,15 +152,17 @@ public class ChatService {
                 || room.getBoard().getUser().getUsername().equals(username);
     }
 
-    private ChatRoomDTO toRoomDTO(ChatRoom room, String me) {
+    private ChatRoomDTO toRoomDTO(ChatRoom room, String me, long unreadCount) {
         String sellerName = room.getBoard().getUser().getUsername();
         boolean iAmSeller = sellerName.equals(me);
         String otherName = iAmSeller ? room.getBuyer().getUsername() : sellerName;
-        return new ChatRoomDTO(room.getId(), room.getBoard().getId(), room.getBoard().getTitle(), otherName, iAmSeller);
+        return new ChatRoomDTO(room.getId(), room.getBoard().getId(), room.getBoard().getTitle(),
+                otherName, iAmSeller, unreadCount);
     }
 
     private ChatMessageDTO toMessageDTO(ChatMessage message) {
         return new ChatMessageDTO(
+                message.getId(),
                 ChatMessageDTO.MessageType.TALK,
                 message.getRoom().getId(),
                 message.getSender().getUsername(),
