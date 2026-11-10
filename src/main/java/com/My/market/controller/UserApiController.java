@@ -1,116 +1,32 @@
 package com.My.market.controller;
 
-import com.My.market.mapper.UserMapper;
-import com.My.market.model.Board;
-import com.My.market.model.QUser;
-import com.My.market.model.User;
-import com.My.market.repository.UserRepository;
 import com.My.market.service.MemberService;
-import com.My.market.service.UserService;
-import com.querydsl.core.types.Predicate;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * 회원 관련 API.
+ *
+ * 예전에는 튜토리얼에서 가져온 회원 CRUD(조회/생성/수정/삭제)가 여기에 있었다. 그런데 /api/** 가 로그인 없이
+ * 열려 있어서, 누구나 전체 회원과 비밀번호 해시를 조회하고 남의 계정을 삭제할 수 있었다. 화면에서 쓰지 않아 제거했다.
+ */
 @RestController
 @RequestMapping("/api")
-@Slf4j
 public class UserApiController {
-
-    @Autowired
-    private UserRepository repository;
-
-    @Autowired
-    private UserService userService;
 
     @Autowired
     private MemberService memberService;
 
-
-    @Autowired
-    private UserMapper userMapper;
-
-    @GetMapping("/users")
-    Iterable<User> all(@RequestParam(required = false) String method, @RequestParam(required = false) String text) {
-        //required 기본이 true인데 이땐 method값 안주면 오류남
-        Iterable<User> users = null;
-        if("query".equals(method)) {
-            users = repository.findByUsernameQuery(text);
-        } else if("nativeQuery".equals(method)) {
-            users = repository.findByUsernameNativeQuery(text);
-        } else if("querydsl".equals(method)) {
-            QUser user = QUser.user;
-            Predicate predicate = user.username.contains(text);
-            users = repository.findAll(predicate);
-        } else if("querydslCustom".equals(method)) {
-            users = repository.findByUsernameCustom(text);
-        } else if("jdbc".equals(method)) {
-            users = repository.findByUsernameJdbc(text);
-        } else if("mybatis".equals(method)) {
-            users = userMapper.getUsers(text);
-        }
-        else {
-            users = repository.findAll();
-        }
-        return users;
-    }
-    // end::get-aggregate-root[]
-    @PostMapping("/users")
-    User newUser(@RequestBody User newUser) {
-        return repository.save(newUser);
-    }
-
-    // Single item
-
-    @GetMapping("/users/{id}")
-    User one(@PathVariable Long id) {
-
-        return repository.findById(id).orElseThrow(null);
-    }
-
-    @PutMapping("/users/{id}")
-    User replaceUser(@RequestBody User newUser, @PathVariable Long id) {
-
-        return repository.findById(id)
-                .map(user -> {
-//                    user.setTitle(newUser.getTitle());
-//                    user.setContent(newUser.getContent());
-//                    user.setBoards(newUser.getBoards());
-                    user.getBoards().clear();
-                    user.getBoards().addAll(newUser.getBoards());
-                    for(Board board : user.getBoards()) {
-                        board.setUser(user);
-                    }
-                    return repository.save(user);
-                })
-                .orElseGet(() -> {
-                    return repository.save(newUser);
-                });
-    }
-
-    @DeleteMapping("/users/{id}")
-    void deleteUser(@PathVariable Long id) {
-        repository.deleteById(id);
-    }
-
+    /** 가입 화면의 아이디 중복 확인. 로그인 전에 호출되므로 보안 설정(WebSecurityConfig)에서 이 경로만 열어둔다. */
     @PostMapping("/users/ConfirmId")
-    @ResponseBody
     public ResponseEntity<Boolean> confirmId(String username) {
-        boolean result = true;
-
-        if(username.trim().isEmpty()) {
-            result = false;
-        } else {
-            if (memberService.selectId(username)) {
-                result = false;
-            } else {
-                result = true;
-            }
-        }
-
-        return new ResponseEntity<>(result, HttpStatus.OK);
+        boolean available = username != null
+                && !username.trim().isEmpty()
+                && !memberService.selectId(username);
+        return new ResponseEntity<>(available, HttpStatus.OK);
     }
-
 }

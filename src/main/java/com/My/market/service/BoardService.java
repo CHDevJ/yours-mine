@@ -14,6 +14,7 @@ import org.jetbrains.annotations.TestOnly;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -59,6 +60,17 @@ public class BoardService {
         BoardFile boardFile = BoardFile.toBoardFile(Fid, originalFileName, storedFileName);
         boardFile.setBoard(newBoard);
         boardFileRepository.save(boardFile);
+    }
+
+    /** 상품 삭제. 상품 소유자만 삭제할 수 있다 (없는 상품이면 IllegalArgumentException, 남의 상품이면 AccessDeniedException) */
+    @Transactional
+    public void deleteOwnBoard(Long id, String username) {
+        Board board = boardRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 상품입니다."));
+        if (!board.getUser().getUsername().equals(username)) {
+            throw new AccessDeniedException("본인 상품만 삭제할 수 있습니다.");
+        }
+        boardRepository.delete(board);
     }
 
     @Transactional
