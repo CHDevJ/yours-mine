@@ -70,6 +70,17 @@
         }
         .chat_wrap .input-div button.quit { background-color: #FF5555; }
         .chat_wrap .input-div button:hover { opacity: 0.9; }
+
+        /* 이전 대화 더 보기 */
+        .chat_wrap .more { text-align: center; margin: 10px 0; }
+        .chat_wrap .more button {
+            border: 1px solid #F18C7E;
+            background: #fff;
+            color: #F18C7E;
+            border-radius: 5px;
+            padding: 6px 14px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -84,6 +95,10 @@
 
         <!-- 채팅 메시지 영역: 이전 대화는 서버가 DB 에서 읽어서 그려준다 -->
         <div class="chat">
+            <!-- 더 오래된 대화가 남아 있을 때만 보인다. 맨 위로 스크롤해도 자동으로 불러온다. -->
+            <div class="more" id="moreWrap" th:style="${hasMore} ? '' : 'display:none'">
+                <button type="button" onclick="loadOlder()">이전 대화 더 보기</button>
+            </div>
             <ul class="msgArea">
                 <li th:each="m : ${history}" th:class="${m.sender == me} ? 'right' : 'left'">
                     <div class="sender" th:text="${m.sender}">보낸 사람</div>
@@ -105,6 +120,11 @@
     const roomId = /*[[${room.roomId}]]*/ 0;
     const myName = /*[[${me}]]*/ '';
 
+    // 서버가 처음 그려준 대화 중 가장 오래된 메시지 번호(이전 대화를 불러올 때의 기준)와, 더 오래된 대화가 있는지
+    let oldestId = /*[[${oldestId}]]*/ null;
+    let hasMore = /*[[${hasMore}]]*/ false;
+    let loadingOlder = false;
+
     const msgArea = document.querySelector('.msgArea');
     const input = document.querySelector('.content');
 
@@ -123,7 +143,7 @@
     }
 
     // 보낸 사람(sender)은 서버가 로그인 정보로 채워서 내려준다. 내 이름과 같으면 오른쪽에 표시.
-    function addMessage(data) {
+    function buildItem(data) {
         const li = document.createElement('li');
 
         if (data.type !== 'TALK') {
@@ -144,9 +164,45 @@
             li.appendChild(senderDiv);
             li.appendChild(msgDiv);
         }
-        msgArea.appendChild(li);
+        return li;
+    }
+
+    // 실시간으로 도착한 메시지는 맨 아래에 붙인다
+    function addMessage(data) {
+        msgArea.appendChild(buildItem(data));
         scrollToBottom();
     }
+
+    // 이전 대화를 한 페이지 더 불러와 맨 위에 붙인다 (맨 위로 스크롤했을 때 / 버튼을 눌렀을 때)
+    function loadOlder() {
+        if (loadingOlder || !hasMore || oldestId === null) return;
+        loadingOlder = true;
+        fetch('/chat/room/' + roomId + '/messages?before=' + oldestId, { credentials: 'same-origin' })
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(function (page) {
+                if (page.messages.length > 0) {
+                    // 위에 끼워 넣어도 보고 있던 위치가 그대로 유지되도록, 늘어난 높이만큼 스크롤을 보정한다
+                    const prevHeight = document.body.scrollHeight;
+                    const prevTop = window.scrollY;
+                    const fragment = document.createDocumentFragment();
+                    page.messages.forEach(function (m) { fragment.appendChild(buildItem(m)); });
+                    msgArea.insertBefore(fragment, msgArea.firstChild);
+                    oldestId = page.messages[0].id;
+                    window.scrollTo(0, prevTop + (document.body.scrollHeight - prevHeight));
+                }
+                hasMore = page.hasMore;
+                document.getElementById('moreWrap').style.display = hasMore ? 'block' : 'none';
+            })
+            .catch(function (e) { console.log(e); })
+            .finally(function () { loadingOlder = false; });
+    }
+
+    window.addEventListener('scroll', function () {
+        if (window.scrollY < 40) loadOlder();
+    });
 
     socket.onopen = function () {
         sendJson({ type: 'ENTER', roomId: roomId });

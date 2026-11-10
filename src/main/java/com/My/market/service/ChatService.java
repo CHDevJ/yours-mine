@@ -1,5 +1,6 @@
 package com.My.market.service;
 
+import com.My.market.DTO.ChatHistoryDTO;
 import com.My.market.DTO.ChatMessageDTO;
 import com.My.market.DTO.ChatRoomDTO;
 import com.My.market.model.Board;
@@ -12,12 +13,15 @@ import com.My.market.repository.ChatRoomRepository;
 import com.My.market.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,6 +30,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ChatService {
 
+    public static final int PAGE_SIZE = 30; // 한 번에 불러오는 대화 개수
     private static final int MAX_MESSAGE_LENGTH = 1000;
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm");
 
@@ -129,12 +134,28 @@ public class ChatService {
                 .orElse(false);
     }
 
+    /** 채팅방을 열 때 보여줄 가장 최근 대화 PAGE_SIZE 개 */
     @Transactional(readOnly = true)
-    public List<ChatMessageDTO> getHistory(Long roomId, String username) {
+    public ChatHistoryDTO getRecentMessages(Long roomId, String username) {
         findParticipantRoom(roomId, username);
-        return chatMessageRepository.findHistory(roomId).stream()
-                .map(this::toMessageDTO)
-                .toList();
+        // 한 개 더 조회해서, 더 오래된 대화가 남아 있는지를 별도의 count 쿼리 없이 알아낸다
+        return toHistory(chatMessageRepository.findLatest(roomId, PageRequest.of(0, PAGE_SIZE + 1)));
+    }
+
+    /** beforeId 번 메시지보다 오래된 대화 PAGE_SIZE 개 (위로 스크롤해서 더 불러올 때) */
+    @Transactional(readOnly = true)
+    public ChatHistoryDTO getMessagesBefore(Long roomId, String username, Long beforeId) {
+        findParticipantRoom(roomId, username);
+        return toHistory(chatMessageRepository.findBefore(roomId, beforeId, PageRequest.of(0, PAGE_SIZE + 1)));
+    }
+
+    // 조회 결과는 최신 -> 과거 순서다. 화면에는 오래된 것이 위에 와야 하므로 뒤집어서 돌려준다.
+    private ChatHistoryDTO toHistory(List<ChatMessage> newestFirst) {
+        boolean hasMore = newestFirst.size() > PAGE_SIZE;
+        List<ChatMessage> page = hasMore ? newestFirst.subList(0, PAGE_SIZE) : newestFirst;
+        List<ChatMessageDTO> oldestFirst = new ArrayList<>(page.stream().map(this::toMessageDTO).toList());
+        Collections.reverse(oldestFirst);
+        return new ChatHistoryDTO(oldestFirst, hasMore);
     }
 
     @Transactional

@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.data.domain.PageRequest;
 
 import java.net.URI;
 import java.net.URLEncoder;
@@ -145,7 +146,7 @@ class ChatWebSocketIntegrationTest {
         assertNotNull(received.get("id"));
 
         // DB 에도 저장되었다
-        assertEquals(1, chatService.getHistory(roomId, seller.getUsername()).size());
+        assertEquals(1, chatService.getRecentMessages(roomId, seller.getUsername()).getMessages().size());
     }
 
     @Test
@@ -154,7 +155,7 @@ class ChatWebSocketIntegrationTest {
         buyerChat.send(Map.of("type", "TALK", "roomId", roomId, "msg", "몰래 보내기"));
 
         Thread.sleep(700);
-        assertTrue(chatService.getHistory(roomId, buyer.getUsername()).isEmpty());
+        assertTrue(chatService.getRecentMessages(roomId, buyer.getUsername()).getMessages().isEmpty());
     }
 
     // ---------- 안 읽은 메시지 알림 ----------
@@ -199,12 +200,12 @@ class ChatWebSocketIntegrationTest {
     @Test
     void 상품을_삭제하면_채팅방과_대화도_함께_삭제된다() {
         chatService.saveMessage(roomId, buyer.getUsername(), "삭제될 대화");
-        assertFalse(chatMessageRepository.findHistory(roomId).isEmpty());
+        assertFalse(chatMessageRepository.findLatest(roomId, PageRequest.of(0, 10)).isEmpty());
 
         boardRepository.deleteById(board.getId());
 
         assertTrue(chatRoomRepository.findById(roomId).isEmpty());
-        assertTrue(chatMessageRepository.findHistory(roomId).isEmpty());
+        assertTrue(chatMessageRepository.findLatest(roomId, PageRequest.of(0, 10)).isEmpty());
     }
 
     // ---------- 화면(Thymeleaf)과 HTTP API ----------
@@ -251,6 +252,49 @@ class ChatWebSocketIntegrationTest {
         assertEquals(200, response.statusCode());
         assertTrue(response.body().contains("읽어야 할 메시지"), "이전 대화가 화면에 그려져야 한다");
         assertEquals(0, chatService.totalUnread(seller.getUsername()), "방을 열었으니 읽음 처리되어야 한다");
+    }
+
+    @Test
+    void 이전_대화_API는_커서_앞의_대화를_돌려주고_비참여자는_거부한다() throws Exception {
+        for (int i = 1; i <= ChatService.PAGE_SIZE + 5; i++) { // 35개
+            chatService.saveMessage(roomId, buyer.getUsername(), "m" + i);
+        }
+        Long cursor = chatService.getRecentMessages(roomId, seller.getUsername()).getMessages().get(0).getId();
+
+        HttpResponse<String> response = get("/chat/room/" + roomId + "/messages?before=" + cursor, sellerCookie);
+
+        assertEquals(200, response.statusCode());
+        JsonNode body = objectMapper.readTree(response.body());
+        assertEquals(5, body.get("messages").size());
+        assertEquals("m1", body.get("messages").get(0).get("msg").asText());
+        assertEquals("m5", body.get("messages").get(4).get("msg").asText());
+        assertFalse(body.get("hasMore").asBoolean());
+
+        assertEquals(403, get("/chat/room/" + roomId + "/messages?before=" + cursor, strangerCookie).statusCode());
+        assertEquals(400, get("/chat/room/" + roomId + "/messages", sellerCookie).statusCode()); // before 누락
+    }
+
+    @Test
+    void 채팅방_화면은_최근_대화만_그리고_더_불러올_것이_있는지_알려준다() throws Exception {
+        for (int i = 1; i <= ChatService.PAGE_SIZE + 5; i++) { // 35개 -> 화면에는 m6 ~ m35
+            chatService.saveMessage(roomId, buyer.getUsername(), "m" + i);
+        }
+
+        String html = get("/chat/room/" + roomId, sellerCookie).body();
+
+        assertTrue(html.contains(">m35<"), "가장 최근 대화는 보여야 한다");
+        assertTrue(html.contains(">m6<"), "이 페이지의 가장 오래된 대화는 보여야 한다");
+        assertFalse(html.contains(">m5<"), "그보다 오래된 대화는 처음에 그리지 않는다");
+        assertTrue(html.contains("let hasMore = true"), "더 불러올 대화가 있다고 알려야 한다");
+    }
+
+    @Test
+    void 대화가_적으면_더_불러오기를_켜지_않는다() throws Exception {
+        chatService.saveMessage(roomId, buyer.getUsername(), "하나");
+
+        String html = get("/chat/room/" + roomId, sellerCookie).body();
+
+        assertTrue(html.contains("let hasMore = false"));
     }
 
     private HttpResponse<String> get(String path, String cookie) throws Exception {
