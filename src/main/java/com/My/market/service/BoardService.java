@@ -3,6 +3,8 @@ package com.My.market.service;
 import com.My.market.DTO.BoardDTO;
 import com.My.market.model.Board;
 import com.My.market.model.BoardFile;
+import com.My.market.model.BoardState;
+import com.My.market.repository.BoardStateRepository;
 import com.My.market.model.User;
 import com.My.market.repository.BoardFileRepository;
 import com.My.market.repository.BoardRepository;
@@ -40,10 +42,14 @@ public class BoardService {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private BoardStateRepository boardStateRepository;
+
     public void save(String username, BoardDTO boardDTO) throws IOException {
         User user = userRepository.findByUsername(username); //board의 계정 주 user_id 가져오기 위해 username으로 정보 가져오기
         boardDTO.setUser_id(user.getId()); //가져온 user 정보에서 user_id추출해서 입력받은 boardDTO에 write
-        Long Fid = boardDTO.getFid();
+        // 권한 검사는 업로드 파일을 디스크에 쓰기 전에 한다 (거부될 요청이 파일을 남기지 않도록)
+        Long Fid = authorizeAndVerifyFileId(user, boardDTO);
 
         MultipartFile multipartFile = boardDTO.getMultipartFile(); //사진 파일 담기
         String originalFileName = multipartFile.getOriginalFilename(); //파일 이름 가져오기
@@ -60,6 +66,49 @@ public class BoardService {
         BoardFile boardFile = BoardFile.toBoardFile(Fid, originalFileName, storedFileName);
         boardFile.setBoard(newBoard);
         boardFileRepository.save(boardFile);
+    }
+
+    /**
+     * 수정 요청(id 가 있는 요청)이면 존재하는 상품이어야 하고 소유자만 가능하다.
+     * (없는 상품이면 IllegalArgumentException, 남의 상품이면 AccessDeniedException)
+     *
+     * 클라이언트가 보낸 사진 번호(Fid)는 '이 상품의 사진'일 때만 인정하고 아니면 무시한다.
+     * 그대로 믿으면 남의 사진 정보를 덮어쓰거나 다른 상품으로 옮길 수 있다.
+     */
+    private Long authorizeAndVerifyFileId(User user, BoardDTO boardDTO) {
+        Long boardId = boardDTO.getId();
+        if (boardId == null) {
+            return null; // 새 상품 등록: 사진 번호는 서버가 새로 부여한다
+        }
+        Board existing = boardRepository.findById(boardId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 상품입니다."));
+        if (!existing.getUser().getId().equals(user.getId())) {
+            throw new AccessDeniedException("본인 상품만 수정할 수 있습니다.");
+        }
+        Long requested = boardDTO.getFid();
+        if (requested == null) {
+            return null;
+        }
+        return boardFileRepository.findById(requested)
+                .filter(file -> file.getBoard() != null && boardId.equals(file.getBoard().getId()))
+                .map(BoardFile::getId)
+                .orElse(null);
+    }
+
+    /** 판매 상태 변경(1=판매중, 0=판매완료). 상품 소유자만 가능하고, 상태 값은 0 또는 1 이어야 한다. */
+    @Transactional
+    public void changeSellState(Long boardId, Long state, String username) {
+        if (state == null || (state != 0L && state != 1L)) {
+            throw new IllegalArgumentException("판매 상태는 0 또는 1 이어야 합니다.");
+        }
+        Board board = boardRepository.findById(boardId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 상품입니다."));
+        if (!board.getUser().getUsername().equals(username)) {
+            throw new AccessDeniedException("본인 상품의 판매 상태만 바꿀 수 있습니다.");
+        }
+        BoardState boardState = BoardState.toBoardState(boardId, state);
+        boardState.setBoard(board);
+        boardStateRepository.save(boardState);
     }
 
     /** 상품 삭제. 상품 소유자만 삭제할 수 있다 (없는 상품이면 IllegalArgumentException, 남의 상품이면 AccessDeniedException) */

@@ -18,11 +18,13 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 import jakarta.validation.Valid;
 
 import java.io.IOException;
@@ -70,12 +72,20 @@ public class BoardController {
     }
 
     @GetMapping("/form")
-    public String form(Model model, @RequestParam(required = false) Long id, BoardDTO boardDTO) {
+    public String form(Model model, @RequestParam(required = false) Long id, BoardDTO boardDTO,
+                       Authentication authentication) {
         if(id == null) {
             model.addAttribute("board", new BoardDTO());
         } else {
 //            Board board = Board.toSaveFile(boardDTO);
             Board board = boardRepository.findByBoardId(id);
+            if (board == null) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "존재하지 않는 상품입니다.");
+            }
+            // 수정 화면은 상품 소유자에게만 열어준다
+            if (!board.getUser().getUsername().equals(authentication.getName())) {
+                throw new AccessDeniedException("본인 상품만 수정할 수 있습니다.");
+            }
             boardDTO = BoardDTO.toBoardDTO(board);
             model.addAttribute("board", boardDTO);
         }
@@ -89,7 +99,11 @@ public class BoardController {
             return "board/form";
         }
         String username = authentication.getName();
-        boardService.save(username, boardDTO);
+        try {
+            boardService.save(username, boardDTO); // 수정이면 소유자만 가능 (남의 상품이면 AccessDeniedException -> 403)
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+        }
 
         return "redirect:/board/list";
     }
@@ -162,13 +176,14 @@ public class BoardController {
 
     @RequestMapping(value = "/SellState.ajax", method = RequestMethod.POST)
     @ResponseBody
-    public void sellState(@RequestParam("num") Long num, @RequestParam("Bid") Long id)
+    public void sellState(@RequestParam("num") Long num, @RequestParam("Bid") Long id, Authentication authentication)
     {
-        Board newBoard = boardRepository.findById(id).get();
-
-        BoardState boardState = BoardState.toBoardState(id, num);
-        boardState.setBoard(newBoard);
-        boardStateRepository.save(boardState);
+        // 상품 소유자만 판매 상태를 바꿀 수 있다 (남의 상품이면 403, 잘못된 값/없는 상품이면 400)
+        try {
+            boardService.changeSellState(id, num, authentication.getName());
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
     }
 
     @RequestMapping(value = "/LikeState.ajax", method = RequestMethod.POST)
