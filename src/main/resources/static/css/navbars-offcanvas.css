@@ -1,0 +1,13 @@
+body {
+  padding-bottom: 20px;
+  font-family: Roboto, -apple-system, 'Helvetica Neue', 'Segoe UI', Arial, sans-serif;
+  background: #3b4465;
+}
+
+.navbar {
+  margin-bottom: 20px;
+}
+
+a {
+  text-decoration-line: none;
+}

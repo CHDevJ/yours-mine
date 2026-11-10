@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Chat Room</title>
+    <style>
+        * { margin: 0; padding: 0; }
+
+        /* 헤더 스타일 */
+        .chat_wrap .header {
+            font-size: 14px;
+            padding: 15px 0;
+            background: #F18C7E;
+            color: white;
+            text-align: center;
+        }
+
+        /* 채팅 영역 스타일 */
+        .chat_wrap .chat { padding-bottom: 80px; }
+        .chat_wrap .chat ul { width: 100%; list-style: none; padding: 0; }
+        .chat_wrap .chat ul li { width: 100%; }
+        .chat_wrap .chat ul li.left { text-align: left; }
+        .chat_wrap .chat ul li.right { text-align: right; }
+        .chat_wrap .chat ul li.notice { text-align: center; color: #999; font-size: 12px; margin: 10px 0; }
+
+        .chat_wrap .chat ul li > div { font-size: 13px; }
+        .chat_wrap .chat ul li > div.sender {
+            margin: 10px 20px 0 20px;
+            font-weight: bold;
+        }
+        .chat_wrap .chat ul li > div.message {
+            display: inline-block;
+            word-break: break-all;
+            margin: 5px 20px;
+            max-width: 75%;
+            border: 1px solid #888;
+            padding: 10px;
+            border-radius: 5px;
+            background-color: #FCFCFC;
+            color: #555;
+            text-align: left;
+        }
+
+        /* 입력 영역 스타일 */
+        .chat_wrap .input-div {
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            background-color: #FFF;
+            text-align: center;
+            border-top: 1px solid #F18C7E;
+            padding: 10px;
+        }
+        .chat_wrap .input-div input[type="text"] {
+            width: 70%;
+            height: 30px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 5px;
+            margin-right: 10px;
+        }
+        .chat_wrap .input-div button {
+            height: 40px;
+            padding: 0 15px;
+            border: none;
+            border-radius: 5px;
+            background-color: #F18C7E;
+            color: white;
+            cursor: pointer;
+        }
+        .chat_wrap .input-div button.quit { background-color: #FF5555; }
+        .chat_wrap .input-div button:hover { opacity: 0.9; }
+    </style>
+</head>
+<body>
+    <!-- 전체 채팅 래퍼 -->
+    <div class="chat_wrap">
+        <!-- 헤더: 상품명, 상대방, 내 역할 -->
+        <div class="header">
+            <span th:text="${room.boardTitle}">상품명</span>
+            · 상대방: <span th:text="${room.otherName}">상대</span>
+            <span th:text="${room.seller} ? '(내가 판매자)' : '(내가 구매자)'"></span>
+        </div>
+
+        <!-- 채팅 메시지 영역: 이전 대화는 서버가 DB 에서 읽어서 그려준다 -->
+        <div class="chat">
+            <ul class="msgArea">
+                <li th:each="m : ${history}" th:class="${m.sender == me} ? 'right' : 'left'">
+                    <div class="sender" th:text="${m.sender}">보낸 사람</div>
+                    <div class="message" th:text="${m.msg}">내용</div>
+                </li>
+            </ul>
+        </div>
+
+        <!-- 입력 영역 -->
+        <div class="input-div">
+            <input type="text" placeholder="보낼 메세지를 입력하세요." class="content" maxlength="1000">
+            <button type="button" class="sendBtn" onclick="sendMsg()">전송</button>
+            <button type="button" class="quit" onclick="quit()">목록으로</button>
+        </div>
+    </div>
+</body>
+
+<script th:inline="javascript">
+    const roomId = /*[[${room.roomId}]]*/ 0;
+    const myName = /*[[${me}]]*/ '';
+
+    const msgArea = document.querySelector('.msgArea');
+    const input = document.querySelector('.content');
+
+    // 주소를 하드코딩하지 않고 현재 접속한 주소를 그대로 사용한다 (localhost 고정 제거)
+    const protocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
+    const socket = new WebSocket(protocol + location.host + '/ws/chat');
+
+    function sendJson(obj) {
+        if (socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify(obj));
+        }
+    }
+
+    function scrollToBottom() {
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+
+    // 보낸 사람(sender)은 서버가 로그인 정보로 채워서 내려준다. 내 이름과 같으면 오른쪽에 표시.
+    function addMessage(data) {
+        const li = document.createElement('li');
+
+        if (data.type !== 'TALK') {
+            // 입장/퇴장 알림
+            li.classList.add('notice');
+            li.innerText = data.msg;
+        } else {
+            li.classList.add(data.sender === myName ? 'right' : 'left');
+
+            const senderDiv = document.createElement('div');
+            senderDiv.classList.add('sender');
+            senderDiv.innerText = data.sender;
+
+            const msgDiv = document.createElement('div');
+            msgDiv.classList.add('message');
+            msgDiv.innerText = data.msg; // innerText 라서 HTML 이 실행되지 않는다
+
+            li.appendChild(senderDiv);
+            li.appendChild(msgDiv);
+        }
+        msgArea.appendChild(li);
+        scrollToBottom();
+    }
+
+    socket.onopen = function () {
+        sendJson({ type: 'ENTER', roomId: roomId });
+    };
+
+    socket.onmessage = function (e) {
+        addMessage(JSON.parse(e.data));
+    };
+
+    socket.onclose = function (e) {
+        // 1008: 서버가 이 방의 참여자가 아니라고 판단해서 연결을 끊음
+        if (e.code === 1008) {
+            alert('접근할 수 없는 채팅방입니다.');
+            location.href = '/chat/chatList';
+        }
+    };
+
+    socket.onerror = function (e) {
+        console.log(e);
+    };
+
+    function sendMsg() {
+        const content = input.value;
+        if (!content.trim()) return; // 빈 메시지 전송 방지
+        sendJson({ type: 'TALK', roomId: roomId, msg: content });
+        input.value = '';
+    }
+
+    // Enter 키로 전송 (한글 입력 중 조합 상태의 Enter 는 무시해서 마지막 글자가 두 번 전송되는 것을 막는다)
+    input.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter' && !event.isComposing) {
+            sendMsg();
+        }
+    });
+
+    function quit() {
+        sendJson({ type: 'QUIT', roomId: roomId });
+        socket.close();
+        location.href = '/chat/chatList';
+    }
+
+    scrollToBottom();
+</script>
+</html>
