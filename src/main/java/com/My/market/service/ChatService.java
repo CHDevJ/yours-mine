@@ -75,13 +75,34 @@ public class ChatService {
 
     @Transactional(readOnly = true)
     public List<ChatRoomDTO> findMyRooms(String username) {
-        Map<Long, Long> unreadByRoom = new HashMap<>();
-        for (Object[] row : chatRoomRepository.countUnreadByRoom(username)) {
-            unreadByRoom.put((Long) row[0], (Long) row[1]);
-        }
+        Map<Long, Long> unread = unreadByRoom(username);
         return chatRoomRepository.findMyRooms(username).stream()
-                .map(room -> toRoomDTO(room, username, unreadByRoom.getOrDefault(room.getId(), 0L)))
+                .map(room -> toRoomDTO(room, username, unread.getOrDefault(room.getId(), 0L)))
                 .toList();
+    }
+
+    /** 방 번호 -> 그 방의 안 읽은 메시지 개수. 안 읽은 게 없는 방은 들어 있지 않다. */
+    @Transactional(readOnly = true)
+    public Map<Long, Long> unreadByRoom(String username) {
+        Map<Long, Long> result = new HashMap<>();
+        for (Object[] row : chatRoomRepository.countUnreadByRoom(username)) {
+            result.put((Long) row[0], (Long) row[1]);
+        }
+        return result;
+    }
+
+    /** 내 전체 안 읽은 메시지 개수 (메뉴 배지) */
+    @Transactional(readOnly = true)
+    public long totalUnread(String username) {
+        return unreadByRoom(username).values().stream().mapToLong(Long::longValue).sum();
+    }
+
+    /** 방에서 username 의 상대방 이름 (구매자라면 판매자, 판매자라면 구매자) */
+    @Transactional(readOnly = true)
+    public String findOtherParticipant(Long roomId, String username) {
+        ChatRoom room = findParticipantRoom(roomId, username);
+        String sellerName = room.getBoard().getUser().getUsername();
+        return sellerName.equals(username) ? room.getBuyer().getUsername() : sellerName;
     }
 
     /**

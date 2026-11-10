@@ -209,4 +209,35 @@ class ChatServiceTest {
         assertThrows(AccessDeniedException.class,
                 () -> chatService.markRead(roomId, stranger.getUsername(), message.getId()));
     }
+
+    @Test
+    void 방에서_상대방_이름을_알려준다() {
+        Long roomId = chatService.getOrCreateRoom(board.getId(), buyer.getUsername());
+
+        assertEquals(seller.getUsername(), chatService.findOtherParticipant(roomId, buyer.getUsername()));
+        assertEquals(buyer.getUsername(), chatService.findOtherParticipant(roomId, seller.getUsername()));
+        assertThrows(AccessDeniedException.class,
+                () -> chatService.findOtherParticipant(roomId, stranger.getUsername()));
+    }
+
+    @Test
+    void 전체_안_읽은_개수는_모든_방의_합이다() {
+        Board second = new Board();
+        second.setTitle("두번째 상품");
+        second.setContent("내용");
+        second.setPrice("20000");
+        second.setUser(seller);
+        boardRepository.save(second);
+
+        Long room1 = chatService.getOrCreateRoom(board.getId(), buyer.getUsername());
+        Long room2 = chatService.getOrCreateRoom(second.getId(), buyer.getUsername());
+        chatService.saveMessage(room1, buyer.getUsername(), "a");
+        chatService.saveMessage(room1, buyer.getUsername(), "b");
+        chatService.saveMessage(room2, buyer.getUsername(), "c");
+
+        assertEquals(3, chatService.totalUnread(seller.getUsername()));
+        assertEquals(2, chatService.unreadByRoom(seller.getUsername()).get(room1));
+        assertEquals(1, chatService.unreadByRoom(seller.getUsername()).get(room2));
+        assertEquals(0, chatService.totalUnread(buyer.getUsername()));
+    }
 }

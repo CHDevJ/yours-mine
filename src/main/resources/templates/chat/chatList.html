@@ -18,12 +18,12 @@
 
         <div class="list-group" th:unless="${#lists.isEmpty(rooms)}">
             <a class="list-group-item list-group-item-action" th:each="r : ${rooms}"
-                th:href="@{/chat/room/{id}(id=${r.roomId})}">
+                th:attr="data-room-id=${r.roomId}" th:href="@{/chat/room/{id}(id=${r.roomId})}">
                 <div class="d-flex justify-content-between">
                     <strong th:text="${r.boardTitle}">상품명</strong>
                     <span>
-                        <!-- 안 읽은 메시지가 있을 때만 빨간 배지 -->
-                        <span class="badge bg-danger" th:if="${r.unreadCount > 0}"
+                        <!-- 안 읽은 메시지가 있을 때만 보이는 빨간 배지 (알림이 오면 JS 가 값을 바꾼다) -->
+                        <span class="badge bg-danger unread-badge" th:classappend="${r.unreadCount == 0} ? 'd-none'"
                             th:text="${r.unreadCount > 99} ? '99+' : ${r.unreadCount}">3</span>
                         <span class="badge" th:classappend="${r.seller} ? 'bg-primary' : 'bg-secondary'"
                             th:text="${r.seller} ? '판매' : '구매'">구매</span>
@@ -35,6 +35,21 @@
 
         <a class="btn btn-dark mt-3" th:href="@{/board/list}">상품 목록</a>
     </div>
+
+    <script>
+        // 알림 소켓(공통 footer)에서 새 메시지 알림이 오면 해당 방의 배지를 바꾼다.
+        // 목록에 없는 방이면(새로 생긴 방) 목록을 다시 불러온다.
+        window.onChatNotify = function (data) {
+            var row = document.querySelector('[data-room-id="' + data.roomId + '"]');
+            if (!row) {
+                if (data.roomUnreadCount > 0) location.reload();
+                return;
+            }
+            var badge = row.querySelector('.unread-badge');
+            badge.textContent = data.roomUnreadCount > 99 ? '99+' : data.roomUnreadCount;
+            badge.classList.toggle('d-none', data.roomUnreadCount === 0);
+        };
+    </script>
 
     <footer th:replace="~{fragments/common :: footer}"></footer>
 </body>

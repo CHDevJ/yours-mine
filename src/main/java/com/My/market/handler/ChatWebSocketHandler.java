@@ -39,6 +39,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
     private final ObjectMapper objectMapper;
     private final ChatService chatService;
+    private final NotificationWebSocketHandler notificationHandler;
 
     // sessionId -> 동시 전송에 안전하게 감싼 세션
     private final Map<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
@@ -109,17 +110,32 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             return;
         }
         broadcast(joinedRoomId, saved);
-        markReadForViewers(joinedRoomId, username, saved.getId());
+        Set<String> viewers = markReadForViewers(joinedRoomId, username, saved.getId());
+        notifyRecipient(joinedRoomId, username, viewers);
+    }
+
+    // 상대가 이 방을 보고 있지 않다면 그 사람에게 안 읽은 메시지가 생긴 것이므로 알림 소켓으로 알려준다.
+    // 알림이 실패해도 메시지 전송(보낸 사람의 채팅 연결)에는 영향이 없어야 한다.
+    private void notifyRecipient(Long roomId, String senderName, Set<String> viewers) {
+        try {
+            String recipient = chatService.findOtherParticipant(roomId, senderName);
+            if (!viewers.contains(recipient)) {
+                notificationHandler.notifyUnread(recipient, roomId);
+            }
+        } catch (Exception e) {
+            log.warn("수신자 알림 실패. roomId={}", roomId, e);
+        }
     }
 
     // 지금 이 방을 보고 있는 상대는 방금 메시지를 화면으로 본 것이므로 읽음 처리한다.
     // (안 하면 방을 보고 있었는데도 목록에 '안 읽음'으로 남는다)
-    private void markReadForViewers(Long roomId, String senderName, Long messageId) {
+    // 보낸 사람을 뺀, 이 방을 보고 있는 사용자 이름들을 돌려준다.
+    private Set<String> markReadForViewers(Long roomId, String senderName, Long messageId) {
+        Set<String> viewers = new HashSet<>();
         Set<String> ids = roomSessions.get(roomId);
         if (ids == null) {
-            return;
+            return viewers;
         }
-        Set<String> viewers = new HashSet<>();
         for (String id : ids) {
             WebSocketSession viewer = sessions.get(id);
             if (viewer != null && viewer.isOpen() && viewer.getPrincipal() != null) {
@@ -130,10 +146,12 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         for (String viewerName : viewers) {
             try {
                 chatService.markRead(roomId, viewerName, messageId);
+                notificationHandler.notifyUnread(viewerName, roomId); // 이 사용자의 다른 탭 배지도 맞춘다
             } catch (Exception e) {
                 log.warn("읽음 처리 실패. roomId={}, user={}", roomId, viewerName, e);
             }
         }
+        return viewers;
     }
 
     private void quit(WebSocketSession session, String username) {
