@@ -39,3 +39,6 @@ application-local.properties
 
 ### 개인 학습 자료 (공개 저장소에 올리지 않음) ###
 private/
+
+### 로컬 실행 데이터 (H2 DB 파일, 업로드한 상품 이미지) ###
+local-data/

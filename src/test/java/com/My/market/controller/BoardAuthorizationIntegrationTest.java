@@ -13,6 +13,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 
@@ -41,7 +42,9 @@ import static org.junit.jupiter.api.Assertions.*;
 class BoardAuthorizationIntegrationTest {
 
     private static final String PASSWORD = "test-pass-1234";
-    private static final String UPLOAD_DIR = "C:/upload";
+    // 업로드 폴더는 설정값(app.upload-dir)을 그대로 쓴다
+    @Value("${app.upload-dir}")
+    private String uploadDir;
 
     @LocalServerPort
     private int port;
@@ -97,7 +100,7 @@ class BoardAuthorizationIntegrationTest {
         deleteQuietly(owner); // 상품, 사진, 상태가 cascade 로 함께 지워진다
         deleteQuietly(stranger);
         // 테스트가 업로드 폴더에 남긴 파일 정리
-        Path dir = Path.of(UPLOAD_DIR);
+        Path dir = Path.of(uploadDir);
         if (Files.isDirectory(dir)) {
             try (Stream<Path> files = Files.list(dir)) {
                 files.filter(p -> p.getFileName().toString().contains("it_" + suffix)).forEach(p -> {
@@ -116,7 +119,7 @@ class BoardAuthorizationIntegrationTest {
     }
 
     private boolean uploadedFileExists(String namePart) throws Exception {
-        Path dir = Path.of(UPLOAD_DIR);
+        Path dir = Path.of(uploadDir);
         if (!Files.isDirectory(dir)) {
             return false;
         }

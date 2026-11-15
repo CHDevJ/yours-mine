@@ -27,7 +27,7 @@ Java / Spring Boot 기반이며, 특히 **실시간 채팅(WebSocket)** 을 안�
 
 - **Backend**: Java 17, Spring Boot 3.3, Spring MVC, Spring Data JPA, MyBatis, Spring Security, Spring WebSocket
 - **View**: Thymeleaf, Bootstrap, 바닐라 JavaScript
-- **DB**: MySQL 8 (개발은 Docker 컨테이너)
+- **DB**: MySQL 8 (Docker 컨테이너) / H2 (설치 없이 실행·테스트하는 기본 프로필, MySQL 호환 모드)
 - **Test**: JUnit 5, Spring Boot Test (실제 서버를 띄우는 WebSocket 통합 테스트 포함)
 - **Build**: Maven (Maven Wrapper)
 
@@ -143,16 +143,18 @@ sequenceDiagram
 - `ws://localhost:8080` 하드코딩을 현재 접속 주소 기반으로 변경했습니다.
 - 한글 입력 중 Enter에서 마지막 글자가 두 번 전송되던 문제를 `isComposing` 검사로 막았습니다.
 - 업로드 폴더가 없으면 상품 등록이 실패하던 문제를 폴더 자동 생성으로 고쳤습니다.
+- **실행 환경 의존성 제거**: 상품 이미지 저장 경로가 `C:/upload/`로 코드 두 곳(저장, 이미지 제공)에 고정되어 있어 Windows가 아니면 상품 등록이 실패했습니다. 경로를 설정값 `app.upload-dir`(기본 `./local-data/uploads`, 환경 변수 `UPLOAD_DIR`)로 옮겨 두 곳이 같은 값을 쓰게 했습니다. 또 실행과 테스트에 MySQL(Docker)이 꼭 필요해서, 기본 프로필을 H2(MySQL 호환 모드)로 두고 MySQL은 `mysql` 프로필로 분리했습니다. H2에서는 `user`가 예약어라서 `NON_KEYWORDS=USER`로 기존 테이블 이름과 SQL을 그대로 쓸 수 있게 했습니다. 전체 테스트 60개가 H2에서 통과하는 것을 확인했습니다.
 
 ---
 
 ## 테스트
 
 ```bash
-./mvnw test
+./mvnw test                                  # 메모리 H2로 실행 (설치할 것 없음)
+./mvnw test -Dspring.profiles.active=mysql   # 실제 MySQL로 실행 (Docker MySQL이 떠 있어야 함)
 ```
 
-MySQL이 떠 있어야 합니다. ([실행 방법](#실행-방법)의 1번 참고)
+기본은 **메모리 H2**로 돌아서 개발용 DB(`local-data/`)를 건드리지 않고, 업로드 파일도 `target/test-uploads`에 남습니다. (`src/test/resources/application-h2.properties`)
 
 | 종류 | 내용 |
 |---|---|
@@ -167,7 +169,24 @@ MySQL이 떠 있어야 합니다. ([실행 방법](#실행-방법)의 1번 참�
 
 ## 실행 방법
 
-필요한 것: **JDK 17**, **Docker**
+DB는 **프로필**로 고릅니다. 코드는 같고 설정 파일만 다릅니다.
+
+| 프로필 | 설정 파일 | 필요한 것 | 데이터 위치 |
+|---|---|---|---|
+| `h2` (기본값) | `application-h2.properties` | JDK 17 | `./local-data/yoursmine.mv.db` (파일형, 재시작해도 유지) |
+| `mysql` | `application-mysql.properties` | JDK 17, Docker | Docker MySQL 컨테이너 |
+
+### 바로 실행 (H2)
+
+```bash
+./mvnw spring-boot:run          # Windows: .\mvnw.cmd spring-boot:run
+```
+
+IntelliJ에서는 `MarketApplication`을 그대로 실행하면 됩니다. http://localhost:8080 으로 접속합니다.
+
+H2는 MySQL 호환 모드(`MODE=MySQL`)로 실행해서 `data.sql`의 `INSERT IGNORE` 같은 MySQL 문법을 그대로 씁니다.
+
+### MySQL로 실행
 
 **1. MySQL 실행** (설정 파일의 DB 이름·계정과 같은 값으로 맞춘 로컬 개발용 컨테이너)
 
@@ -177,10 +196,21 @@ docker run -d --name mymarket-mysql -p 3306:3306 -e MYSQL_ROOT_PASSWORD=root -e 
 
 다음부터는 `docker start mymarket-mysql`로 다시 켭니다.
 
-**2. 앱 실행**: IntelliJ에서 `MarketApplication`을 실행하고 http://localhost:8080 으로 접속합니다.
+**2. 앱 실행**
+
+```bash
+./mvnw spring-boot:run -Dspring-boot.run.profiles=mysql
+```
+
+IntelliJ에서는 실행 설정의 **Active profiles**에 `mysql`을 넣습니다.
+
+- DB 계정은 환경 변수 `DB_USERNAME`, `DB_PASSWORD`로 바꿀 수 있습니다. 없으면 위 Docker 컨테이너용 기본값을 씁니다.
+
+### 공통
 
 - 첫 실행 때 테이블이 자동 생성(`ddl-auto=update`)되고, `data.sql`이 기본 권한(`ROLE_USER`, `ROLE_ADMIN`)을 넣습니다.
-- DB 계정은 환경 변수 `DB_USERNAME`, `DB_PASSWORD`로 바꿀 수 있습니다. 없으면 위 Docker 컨테이너용 기본값을 씁니다.
+- 상품 이미지는 `./local-data/uploads`에 저장됩니다. 환경 변수 `UPLOAD_DIR`로 바꿀 수 있습니다. (`app.upload-dir`)
+- `local-data/`에는 계정과 업로드 이미지가 들어가므로 Git에 올리지 않습니다. (`.gitignore`에 등록)
 - 가입한 사용자는 모두 `ROLE_USER`입니다. 관리자 기능은 `user_role` 테이블에 직접 `ROLE_ADMIN`(id=2)을 넣어야 합니다.
 
 **채팅 체험**: 판매자 계정으로 상품을 등록하고(이미지 필수), 다른 브라우저(또는 시크릿 창)에서 구매자 계정으로 로그인해 상품 상세의 **연락하기**를 누릅니다.
@@ -198,7 +228,6 @@ docker run -d --name mymarket-mysql -p 3306:3306 -e MYSQL_ROOT_PASSWORD=root -e 
 - 상대가 내 메시지를 **읽었는지**(읽음 표시)는 아직 보여주지 않습니다. 저장된 "마지막 읽은 번호"로 확장할 수 있습니다.
 - 채팅방 화면에는 공통 메뉴가 없어서, 방 안에서는 다른 방의 알림을 받지 않습니다.
 - 대화 기록은 최근 30개 + 위로 스크롤이지만, 목록 화면의 "마지막 메시지 미리보기"는 없습니다.
-- 상품 이미지 저장 경로가 `C:/upload/`로 코드에 고정되어 있어 Windows 환경을 가정합니다. 설정으로 빼야 합니다.
 - `ddl-auto=update`는 개발용입니다. 운영에서는 Flyway 같은 마이그레이션 도구가 필요합니다.
 - DB 기본 계정값은 로컬 Docker용입니다. 배포 시에는 환경 변수로 주입해야 합니다.
 
