@@ -15,7 +15,6 @@ import java.util.Optional;
 public interface BoardRepository  extends JpaRepository<Board, Long> {
 
     List<Board> findByTitle(String title);
-    List<Board> findByTitleOrContent(String title, String content);
 
     @Query(value = "SELECT * FROM board b WHERE b.user_id = :id", nativeQuery = true)
     List<Board> findByUserId(@Param("id") Long id);

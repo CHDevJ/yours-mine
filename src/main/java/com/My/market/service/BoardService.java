@@ -130,16 +130,6 @@ public class BoardService {
     }
 
     @Transactional
-    public List<BoardDTO> findAll() {
-        List<Board> boardList = boardRepository.findAll();
-        List<BoardDTO> boardDTOList = new ArrayList<>();
-        for(Board board: boardList) {
-            boardDTOList.add(BoardDTO.toBoardDTO(board));
-        }
-        return boardDTOList;
-    }
-
-    @Transactional
     public BoardDTO findById(Long id) {
         Optional<Board> optionalBoardEntity = boardRepository.findById(id);
         if (optionalBoardEntity.isPresent()) {
@@ -160,26 +150,4 @@ public class BoardService {
         }
         return boardDTOIdList;
     }
-//    public void save(String username, Board board, BoardDTO boardDTO) throws IOException {
-//        User user = userRepository.findByUsername(username);
-//        board.setUser(user);
-//
-//        MultipartFile multipartFile = boardDTO.getMultipartFile();
-//
-////        if(multipartFile == null) {
-////            boardRepository.save(board);//파일 가져오기
-////        }
-////        else {
-//        String originalFilename = multipartFile.getOriginalFilename(); //파일 이름 가져오기
-//        String storedFileName = System.currentTimeMillis() + "_" + originalFilename; //서버 저장용 이름 생성
-//        String savePath = "C:/upload/" + storedFileName; //저장경로 설정
-//        multipartFile.transferTo(new File(savePath)); //해당 경로(위 경로)에 파일 저장
-//        Long savedId = boardRepository.save(board).getId();
-//        Board boardId = boardRepository.findById(savedId).get();
-//
-//        BoardFile boardFile = BoardFile.toBoardFile(boardId, originalFilename, storedFileName);
-//
-//        boardFileRepository.save(boardFile);
-////        }
-//    }
 }

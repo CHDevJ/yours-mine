@@ -59,11 +59,8 @@ public class AccountController {
 
         String Uid = request.getRemoteUser();
         Long id = userRepository.findByUid(Uid);
-//        List<BoardDTO> boardDTOMyList = boardService.findByUserId(id);
-//        model.addAttribute("boardMyList", boardDTOMyList);
 
         Page<Board> boards = boardRepository.findByIdTitle(id, searchText, pageable);
-        //Page<Board> boards = boardRepository.findByTitle(searchText, pageable);
         Page<BoardDTO> boardDTOs = boards.map(BoardDTO::toBoardDTOPage);
         int startPage = Math.max(1, boards.getPageable().getPageNumber() - 4);
         int endPage = Math.min(boards.getTotalPages(), boards.getPageable().getPageNumber() + 4);
@@ -82,7 +79,6 @@ public class AccountController {
         Long num = 1L;
 
         Page<Board> boards = boardRepository.findBoardsByUserIdAndState(uid, num, pageable);
-//        Page<Board> boards = boardRepository.findByIdTitle(id, searchText, pageable);
         Page<BoardDTO> boardDTOs = boards.map(BoardDTO::toBoardDTOPage);
         int startPage = Math.max(1, boards.getPageable().getPageNumber() - 4);
         int endPage = Math.min(boards.getTotalPages(), boards.getPageable().getPageNumber() + 4);
